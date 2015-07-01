@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     InitializeMagick(*argv);
     srand((unsigned)time(0));
 
-    Image image1("image3.jpg");
+    Image image1("image1.jpg");
     image1.modifyImage();
     image1.type(TrueColorType);
     Image image2("image2.jpg");
@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 	*pixel1 = *pixel2;
 	image1.syncPixels();
 //	image1.display();
-	if (i%10000 == 0) image1.write("image1.jpg");
+	if (i%10000 == 0) image1.write("image3.jpg");
     }
     return 0;
 }
