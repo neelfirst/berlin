@@ -9,10 +9,10 @@ from math import cos, sin, radians
 #import datetime
 
 ### BEGIN TUNING PARAMETERS ###
-RTHRESHOLD = 0
-ITHRESHOLD = 0
-THETA_MIN = -30
-THETA_MAX = 30
+RTHRESHOLD = 0.5
+#ITHRESHOLD = 0.2
+THETA_MIN = -10
+THETA_MAX = 10
 WTHICK = 2
 HTHICK = 14
 #### END TUNING PARAMETERS ####
@@ -25,7 +25,7 @@ UDP_IP = ""
 UDP_PORT = 2368
 PT = namedtuple("PT", ["THETA","PHI"])
 
-def parseData (data,r,i):
+def parseData (data,r):
 	array = frombuffer(data, uint8)
 	xylist = []
 	for x in xrange(0,12):
@@ -43,10 +43,12 @@ def parseData (data,r,i):
 			pt = PT(int(THETA),PHI[y])
 			R = 0.002*(array[(4+x*100)+(1+y*3)]*256 + array[(4+x*100)+(0+y*3)])
 			I = array[(4+x*100)+(2+y*3)]
-			if abs(I-i[pt]) >= ITHRESHOLD and abs(R-r[pt]) >= RTHRESHOLD:
+			if R != 0 and r[pt] != 0 and (r[pt]-R)/r[pt] >= RTHRESHOLD:
+#			if abs((I-i[pt])/(I+0.1)) >= ITHRESHOLD and abs((R-r[pt])/(R+0.1)) >= RTHRESHOLD:
 				# linearize degrees here
-				phi = ((PHI[y]+10)/21)
+				phi = -((PHI[y]+10)/21)
 				theta = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN)
+				print THETA,',',PHI[y],',',R,',',r[pt]
 				xylist.append([theta+1,phi+1])
 	return xylist
 
@@ -70,19 +72,19 @@ if w1 != w2 or h1 != h2:
 f = open('berkeley.csv','rb')
 x = csv.reader(f)
 r = {}
-i = {}
+#i = {}
 for row in x:
         pt = PT(THETA=int(row[0]),PHI=float(row[1]))
-        r[pt] = int(float(row[2]))
-        i[pt] = int(float(row[3]))
+        r[pt] = float(row[2])
+#        i[pt] = float(row[3])
 
 while True:
 #	start = datetime.datetime.now()
 	data, addr = sock.recvfrom(1206*1808) # 2180448
-	if addr[1] != 2368 or addr[0] != '192.168.1.201':
-		print "error: captured UDP packet not from LiDAR"
-		continue;
-	xylist = parseData(data,r,i)
+#	if addr[1] != '2368 ' or addr[0] != '192.168.1.201':
+#		print "error: captured UDP packet not from LiDAR:"
+#		continue;
+	xylist = parseData(data,r)
 	for pt in xylist:
 		W = int(pt[0]*w1/2)
 		H = int(pt[1]*h1/2)

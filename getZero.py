@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import socket
-from numpy import frombuffer, uint8, mean
+from numpy import frombuffer, uint8, mean, isnan
 
 PHI = [-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
        -25.33,-4.00,-24.00,-2.67,-22.67,-1.33,-21.33,0.00,
@@ -26,7 +26,7 @@ def parseData (data):
 		for j in xrange(0,32):
 			R = 0.002*(array[(4+i*100)+(1+j*3)]*256 + array[(4+i*100)+(0+j*3)])
 			I = array[(4+i*100)+(2+j*3)]
-			xylist.append([int(THETA),PHI[j],R,I])
+			xylist.append([int(THETA),PHI[j],int(R),int(I)])
 #			print THETA, ',', PHI[j], ',', R, ',', I
 	return xylist
 
@@ -37,7 +37,7 @@ sock = socket.socket(socket.AF_INET, # Internet
 sock.bind((UDP_IP, UDP_PORT))
 fulldata = []
 
-for i in xrange(0,250):#while True:
+for i in xrange(0,1000):#while True:
 #	start = datetime.datetime.now()
 	data, addr = sock.recvfrom(1206*1808) # 2180448
 	if addr[1] != 2368 or addr[0] != '192.168.1.201':
@@ -46,13 +46,14 @@ for i in xrange(0,250):#while True:
 	xylist = parseData(data)
 	fulldata.extend(xylist)
 
-for theta in xrange(-179,179):
+for theta in xrange(-19,20):
 	for phi in PHI:
 		R = []
-		I = []
 		for row in fulldata:
 			if row[0] == theta and row[1] == phi:
 				R.append(row[2])
-				I.append(row[3])
-		print theta,',',phi,',',mean(R),',',mean(I)
-
+		if isnan(mean(R)):
+			print theta,',',phi,',0'
+		else:
+			print theta,',',phi,',',mean(R)
+#				print theta,',',phi,',',row[2]
