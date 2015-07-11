@@ -8,7 +8,6 @@ env.Object('Lib-Camera-Control/VelodyneMonitor.cpp')
 # $$$ TARGETS $$$
 env.Program(Split('''
 	raw_lidar_reader.cpp
-	Lib-Camera-Control/VelodyneMonitor.o
 	'''))
 
 env.Program(Split('''
