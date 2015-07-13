@@ -1,3 +1,4 @@
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -19,6 +20,7 @@ int _socket;
 const uint16_t udp_port = 2368;
 const int CLOSED_SOCKET = -1;
 
+struct pt {uint16_t w=0, h=0, forget=0;};
 const std::string FILENAME = "berkeley.csv";
 const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,-25.33,-4.00,-24.00,-2.67,-22.67,-1.33,-21.33,0.00,-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 const int BASEROWS = 1248; // -19->19 x 32
@@ -88,8 +90,8 @@ int main()
 
 
     // 1. import baseline information from csv
-    // columns: 0 = theta, 1 = phi, 2 = radius, 3 = forget counter
-    float Rdata[BASEROWS][4];
+    // columns: 0 = theta, 1 = phi, 2 = radius
+    float Rdata[BASEROWS][3];
     std::ifstream file(FILENAME.c_str());
     for (int row = 0; row < BASEROWS; row++)
     {
@@ -105,7 +107,6 @@ int main()
 	    convertor >> Rdata[row][col];
 	    iss.clear();
 	}
-	Rdata[row][3] = 0;
     }
     file.close();
 
@@ -115,16 +116,18 @@ int main()
     // >0 --> increment each round, ignore de/activations
     // FORGET -> move from FORGET->-FORGET & deactivate
     // <0 --> increment each round, ignore activations
+    std::vector<pt> activePoints;
 
     // 2. use opencv to import two source images, perform dimension checking
     double previousRotationValue = 0, THETA = 0;
     uint16_t blk_id, theta, r; // uint8_t intensity;
-    int W, H, w1, w2, h1, h2, ww, hh;
+    pt activePt, srcDims;
+    int W, H;
     cv::Mat src1 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
     cv::Mat src2 = cv::imread("sat.png", CV_LOAD_IMAGE_COLOR);
     cv::Mat src3 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
-    w1 = src1.cols; w2 = src2.cols; h1 = src1.rows; h2 = src2.rows;
-    if (w1 != w2 || h1 != h2)
+    srcDims.w = src1.cols; srcDims.h = src1.rows;
+    if (srcDims.w != src2.cols || srcDims.h != src2.rows)
     {
 	std::cerr << "fatal: source image dimensional mismatch" << std::endl;
 	_exit(4);
@@ -172,27 +175,32 @@ int main()
 			    // 4. determine if diff(data,Rdata) passes threshold, add to list
 			    if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
 			    {
-				if (Rdata[index][3] == 0) Rdata[index][3] = 1; // if a newly activated point, start FORGET
 				// 5. this is where we parse the point list into pixel blocks
 				double th = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
 				double ph = -((PHI+10)/21) + 1;
-				W = int(th*w1/2);
-				H = int(ph*h1/2);
-				if (W > w1 || H > h1 || W < 0 || H < 0)
+				activePt.w = int(th*srcDims.w/2);
+				activePt.h = int(ph*srcDims.h/2);
+				if (activePt.w > srcDims.w || activePt.h > srcDims.h || activePt.w < 0 || activePt.h < 0)
 				{
 				    std::cerr << "error: converted point out of bounds" << std::endl;
 				    continue;
 				}
-				for (int a = 0; a < HTHICK; a++)
+				bool activate = true;
+				for (int a = 0; a < activePoints.size(); a++)
+				    if (activePoints[a].w == activePt.w && activePoints[a].h == activePt.h) { activate = false; break; }
+				if (activate)
 				{
-				    for (int b = 0; b < WTHICK; b++)
+				    // if a newly active point, start FORGET
+				    activePt.forget = 1;
+				    activePoints.push_back(activePt);
+				    for (int a = -HTHICK+1; a < HTHICK; a++)
 				    {
-					hh = H+a; ww = W+b;
-					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww);
-					hh = H-a; ww = W-b;
-					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww);
+					for (int b = -WTHICK+1; b < WTHICK; b++)
+					{
+					    H = activePt.h+a; W = activePt.w+b;
+					    if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
+					    else src1.at<cv::Vec3b>(H,W) = src2.at<cv::Vec3b>(H,W);
+					}
 				    }
 				}
 			    }
@@ -202,34 +210,29 @@ int main()
 		    {
 		        cv::imshow("image",src1);
 		        cv::waitKey(1);
-		        for (int i = 0; i < BASEROWS; i++)
+		        for (int i = 0; i < activePoints.size(); i++)
 		        {
-			    if (Rdata[i][3] != 0) Rdata[i][3]++;
-			    if (Rdata[i][3] == FORGET)
+			    if (activePoints[i].forget != 0) activePoints[i].forget++; // increment + & - forget counters
+			    if (activePoints[i].forget == 0) activePoints.erase(activePoints.begin()+i); // remove once cooldown complete
+			    if (activePoints[i].forget == FORGET) // flip from + to - forget and deactivate pixels
 			    {
-				Rdata[i][3] = -FORGET;
-				double th = (2*Rdata[i][0]-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
-				double ph = -((Rdata[i][1]+10)/21) + 1;
-				W = int(th*w1/2);
-				H = int(ph*h1/2);
-				if (W > w1 || H > h1 || W < 0 || H < 0)
+				activePoints[i].forget = -FORGET;
+				if (activePoints[i].w > srcDims.w || activePoints[i].h > srcDims.h || 
+				    activePoints[i].w < 0 || activePoints[i].h < 0)
 				{
 				    std::cerr << "error: converted point out of bounds" << std::endl;
 				    continue;
 				}
-				for (int a = 0; a < HTHICK; a++)
+				for (int a = -HTHICK+1; a < HTHICK; a++)
 				{
-				    for (int b = 0; b < WTHICK; b++)
+				    for (int b = -WTHICK+1; b < WTHICK; b++)
 				    {
-					hh = H+a; ww = W+b;
-					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src3.at<cv::Vec3b>(hh,ww);
-					hh = H-a; ww = W-b;
-					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src3.at<cv::Vec3b>(hh,ww);
+					H = activePoints[i].h+a; W = activePoints[i].w+b;
+					if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
+					else src1.at<cv::Vec3b>(H,W) = src3.at<cv::Vec3b>(H,W);
 				    }
 				}
-				std::cout<<"FORGET at "<<Rdata[i][0]<<" "<<Rdata[i][1]<<std::endl;
+//				std::cout<<"FORGET at "<<Rdata[i][0]<<" "<<Rdata[i][1]<<std::endl;
 			    }
 		        }
 		    }
