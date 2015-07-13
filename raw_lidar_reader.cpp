@@ -28,7 +28,7 @@ const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
 			-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,
 			-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 
-const std::string DIRECTORY = "./images";
+const std::string DIRECTORY = "./images/";
 const std::string FILENAME = "berkeley.csv"; // sync with getZero.py
 const int THETA_MIN = -19; // sync with getZero.py
 const int THETA_MAX = 19; // sync with getZero.py
@@ -161,8 +161,9 @@ int main()
     // and then does all of the analysis.
     for ( int Z = 1; Z <= files.size()/2; Z++) 
     {
-    std::string inMap = DIRECTORY + "/" + std::to_string(Z) + "-map.png";
-    std::string inMap = DIRECTORY + "/" + std::to_string(Z) + "-sat.png";
+    std::stringstream ss; ss << Z;
+    std::string inMap = DIRECTORY + ss.str() + "-map.png";
+    std::string inSat = DIRECTORY + ss.str() + "-sat.png";
     cv::Mat output = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
     cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
     cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
