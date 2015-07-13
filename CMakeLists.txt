@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8)
+project( raw_lidar_reader )
+find_package( OpenCV REQUIRED )
+include_directories(${OpenCV_INCLUDE_DIRS})
+add_executable( raw_lidar_reader raw_lidar_reader.cpp )
+target_link_libraries( raw_lidar_reader ${OpenCV_LIBS} )
