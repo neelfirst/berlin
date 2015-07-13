@@ -1,3 +1,5 @@
+#include <sys/types.h>
+#include <dirent.h>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -21,23 +23,48 @@ const uint16_t udp_port = 2368;
 const int CLOSED_SOCKET = -1;
 
 struct pt {uint16_t w=0, h=0, forget=0;};
-const std::string FILENAME = "berkeley.csv";
-const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,-25.33,-4.00,-24.00,-2.67,-22.67,-1.33,-21.33,0.00,-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
-const int BASEROWS = 1248; // -19->19 x 32
-const int THETA_MIN = -19;
-const int THETA_MAX = 19;
-const double RTHRESHOLD = 0;
-const double ITHRESHOLD = 0.2;
-const int WTHICK = 10;
-const int HTHICK = 14;
-const int FORGET = 20;
+const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
+			-25.33,-4.00,-24.00,-2.67,-22.67,-1.33,-21.33,0.00,
+			-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,
+			-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 
-int getIndex (double th, int phindex)
+const std::string DIRECTORY = "./images";
+const std::string FILENAME = "berkeley.csv"; // sync with getZero.py
+const int THETA_MIN = -19; // sync with getZero.py
+const int THETA_MAX = 19; // sync with getZero.py
+
+const int WTHICK = 10; // tune per display
+const int HTHICK = 14; // tune per display
+const int FORGET = 20; // tune for performance and aesthetics
+const double RTHRESHOLD = 0; // tune for performance and aesthetics
+//const double ITHRESHOLD = 0.2; // unused
+
+int getIndex (double th, int phindex) { return (int(th) + (0 - THETA_MIN))*32 + phindex; }
+bool hasEnding (std::string const &fullString, std::string const &ending) {
+    if (fullString.length() >= ending.length()) {
+        return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
+    } else {
+        return false;
+    }
+}
+int getdir (std::string dir, std::vector<std::string> &files)
 {
-    int theta = int(th);
-    int shift = 0 - THETA_MIN;
-    theta += shift;
-    return theta*32 + phindex;
+    DIR *dp;
+    std::string temp;
+    struct dirent *dirp;
+    if((dp  = opendir(dir.c_str())) == NULL) {
+        std::cerr << "Error(" << errno << ") opening " << dir << std::endl;
+        return errno;
+    }
+
+    while ((dirp = readdir(dp)) != NULL) {
+	temp = std::string(dirp->d_name);
+	if (hasEnding(temp,".png"))
+	        files.push_back(std::string(dirp->d_name));
+    }
+    closedir(dp);
+    sort(files.begin(), files.end());
+    return 0;
 }
 
 int main()
@@ -91,6 +118,7 @@ int main()
 
     // 1. import baseline information from csv
     // columns: 0 = theta, 1 = phi, 2 = radius
+    const int BASEROWS = (1+THETA_MAX-THETA_MIN)*32; // expected rows in base data file
     float Rdata[BASEROWS][3];
     std::ifstream file(FILENAME.c_str());
     for (int row = 0; row < BASEROWS; row++)
@@ -123,20 +151,28 @@ int main()
     uint16_t blk_id, theta, r; // uint8_t intensity;
     pt activePt, srcDims;
     int W, H;
-    cv::Mat src1 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
-    cv::Mat src2 = cv::imread("sat.png", CV_LOAD_IMAGE_COLOR);
-    cv::Mat src3 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
-    srcDims.w = src1.cols; srcDims.h = src1.rows;
-    if (srcDims.w != src2.cols || srcDims.h != src2.rows)
-    {
-	std::cerr << "fatal: source image dimensional mismatch" << std::endl;
-	_exit(4);
-    }
+
+    // need to insert into loop to loop through sets of images
+    std::vector<std::string> files = std::vector<std::string>();
+    getdir(DIRECTORY,files);
 
     // Enter a loop which does a blocking read() for the next datagram
     // gets the system time as soon as that read returns
     // and then does all of the analysis.
-    while ( true )
+    for ( int Z = 1; Z <= files.size()/2; Z++) 
+    {
+    std::string inMap = DIRECTORY + "/" + std::to_string(Z) + "-map.png";
+    std::string inMap = DIRECTORY + "/" + std::to_string(Z) + "-sat.png";
+    cv::Mat output = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
+    cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
+    cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
+    srcDims.w = output.cols; srcDims.h = output.rows;
+    if (srcDims.w != inputSat.cols || srcDims.h != inputSat.rows)
+    {
+	std::cerr << "fatal: source image dimensional mismatch" << std::endl;
+	_exit(4);
+    }
+    for ( int z = 0; z < 100; z++ ) // need to make this a finite loop so we can eventually move to the next set of images
     {
         // Block until a datagram or an error is returned.
         bytesReceived = recvfrom(_socket,lidarBuffer,1206,0,&source_address,&source_address_length);
@@ -152,8 +188,8 @@ int main()
             sockaddr_in * socket_address = reinterpret_cast<sockaddr_in *>(&source_address);
             if (socket_address->sin_addr.s_addr == ipAddress.s_addr)
 	    {
-//		timespec start, stop;
-//		clock_gettime(CLOCK_REALTIME,&start);
+		timespec start, stop;
+		clock_gettime(CLOCK_REALTIME,&start);
                 if (bytesReceived > 1) // 3. grab real time data from Lidar in loop (theta, R)
 		{
                     // As well as can be determined, a complete datagram was received.
@@ -170,8 +206,7 @@ int main()
 //			    memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
 			    double R = r * 0.002;
 			    double PHI = phi[i];
-			    int index = getIndex(THETA,i);
-			    double Rref = Rdata[index][2];
+			    double Rref = Rdata[getIndex(THETA,i)][2];
 			    // 4. determine if diff(data,Rdata) passes threshold, add to list
 			    if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
 			    {
@@ -199,7 +234,7 @@ int main()
 					{
 					    H = activePt.h+a; W = activePt.w+b;
 					    if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					    else src1.at<cv::Vec3b>(H,W) = src2.at<cv::Vec3b>(H,W);
+					    else output.at<cv::Vec3b>(H,W) = inputSat.at<cv::Vec3b>(H,W);
 					}
 				    }
 				}
@@ -208,7 +243,7 @@ int main()
 		    }
 		    if (previousRotationValue < THETA_MAX && THETA > THETA_MAX)
 		    {
-		        cv::imshow("image",src1);
+		        cv::imshow("image",output);
 		        cv::waitKey(1);
 		        for (int i = 0; i < activePoints.size(); i++)
 		        {
@@ -229,21 +264,21 @@ int main()
 				    {
 					H = activePoints[i].h+a; W = activePoints[i].w+b;
 					if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					else src1.at<cv::Vec3b>(H,W) = src3.at<cv::Vec3b>(H,W);
+					else output.at<cv::Vec3b>(H,W) = inputMap.at<cv::Vec3b>(H,W);
 				    }
 				}
-//				std::cout<<"FORGET at "<<Rdata[i][0]<<" "<<Rdata[i][1]<<std::endl;
 			    }
 		        }
 		    }
 		    previousRotationValue = THETA;
-//		    clock_gettime(CLOCK_REALTIME,&stop);
-//		    std::cout<<stop.tv_sec-start.tv_sec<<" "<<stop.tv_nsec-start.tv_nsec<<std::endl;
+		    clock_gettime(CLOCK_REALTIME,&stop);
+		    std::cout<<stop.tv_sec-start.tv_sec<<" "<<stop.tv_nsec-start.tv_nsec<<std::endl;
                     continue;
                 }
 		else std::cerr << "Got a partial packet" << std::endl;
             }
 	else std::cerr << "Got a packet from the wrong source" << std::endl;
         };
+    };
     };
 };
