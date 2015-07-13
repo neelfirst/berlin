@@ -1,9 +1,0 @@
-#!/bin/bash -e
-
-IM_CXXFLAGS="-fopenmp -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16 -I/usr/local/include/ImageMagick-6"
-IM_LDFLAGS="-L/usr/local/lib -lMagick++-6.Q16 -lMagickWand-6.Q16 -lMagickCore-6.Q16"
-
-g++ `Magick++-config --cxxflags --cppflags` -O2 -Wall -o jpeg jpeg.cpp `Magick++-config --ldflags --libs`
-#g++ -o jpeg.o -c -g -std=c++0x -pthread -Wall -Wextra -Werror $IM_CXXFLAGS $IM_LDFLAGS jpeg.cpp
-#g++ -o jpeg jpeg.o -lrt -lpthread
-./jpeg
