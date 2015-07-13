@@ -9,6 +9,8 @@
 #include <cassert>
 #include <jpeglib.h>
 #include <math.h>
+#include <time.h>
+#include <sys/time.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
@@ -16,16 +18,17 @@ struct in_addr ipAddress;
 int _socket;
 const uint16_t udp_port = 2368;
 const int CLOSED_SOCKET = -1;
-const std::string FILENAME = "berkeley.csv";
 
+const std::string FILENAME = "berkeley.csv";
 const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,-25.33,-4.00,-24.00,-2.67,-22.67,-1.33,-21.33,0.00,-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 const int BASEROWS = 1248; // -19->19 x 32
 const int THETA_MIN = -19;
 const int THETA_MAX = 19;
-const double RTHRESHOLD = 0.5;
+const double RTHRESHOLD = 0;
 const double ITHRESHOLD = 0.2;
-const int WTHICK = 2;
+const int WTHICK = 10;
 const int HTHICK = 14;
+const int FORGET = 20;
 
 int getIndex (double th, int phindex)
 {
@@ -85,29 +88,41 @@ int main()
 
 
     // 1. import baseline information from csv
-    float Rdata[BASEROWS][3];
+    // columns: 0 = theta, 1 = phi, 2 = radius, 3 = forget counter
+    float Rdata[BASEROWS][4];
     std::ifstream file(FILENAME.c_str());
     for (int row = 0; row < BASEROWS; row++)
     {
 	std::string line;
 	std::getline(file,line);
 	if (!file.good()) break;
-	std::stringstream iss(line);
+	std::istringstream iss(line);
 	for (int col = 0; col < 3; col++)
 	{
 	    std::string val;
 	    std::getline(iss,val,',');
-	    if (!iss.good()) break;
-	    std::stringstream convertor(val);
+	    std::istringstream convertor(val);
 	    convertor >> Rdata[row][col];
+	    iss.clear();
 	}
+	Rdata[row][3] = 0;
     }
+    file.close();
+
+    // forget counter mechanics:
+    // 0 = stay at 0
+    // activated -> move from 0->1
+    // >0 --> increment each round, ignore de/activations
+    // FORGET -> move from FORGET->-FORGET & deactivate
+    // <0 --> increment each round, ignore activations
 
     // 2. use opencv to import two source images, perform dimension checking
+    double previousRotationValue = 0, THETA = 0;
     uint16_t blk_id, theta, r; // uint8_t intensity;
     int W, H, w1, w2, h1, h2, ww, hh;
     cv::Mat src1 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
     cv::Mat src2 = cv::imread("sat.png", CV_LOAD_IMAGE_COLOR);
+    cv::Mat src3 = cv::imread("map.png", CV_LOAD_IMAGE_COLOR);
     w1 = src1.cols; w2 = src2.cols; h1 = src1.rows; h2 = src2.rows;
     if (w1 != w2 || h1 != h2)
     {
@@ -115,7 +130,9 @@ int main()
 	_exit(4);
     }
 
-    // Enter a loop which does a blocking read() for the next datagram, gets the system time as soon as that read returns and then does all of the analysis.
+    // Enter a loop which does a blocking read() for the next datagram
+    // gets the system time as soon as that read returns
+    // and then does all of the analysis.
     while ( true )
     {
         // Block until a datagram or an error is returned.
@@ -132,6 +149,8 @@ int main()
             sockaddr_in * socket_address = reinterpret_cast<sockaddr_in *>(&source_address);
             if (socket_address->sin_addr.s_addr == ipAddress.s_addr)
 	    {
+//		timespec start, stop;
+//		clock_gettime(CLOCK_REALTIME,&start);
                 if (bytesReceived > 1) // 3. grab real time data from Lidar in loop (theta, R)
 		{
                     // As well as can be determined, a complete datagram was received.
@@ -139,7 +158,7 @@ int main()
 		    {
 			memcpy(&blk_id, &(lidarBuffer[j*100]), 2);
 			memcpy(&theta, &(lidarBuffer[(j*100)+2]), 2);
-			double THETA = theta*0.01;
+			THETA = theta*0.01;
 			if (THETA > 180) THETA -= 360;
 			if (THETA < THETA_MIN || THETA > THETA_MAX) continue;
 			for (int i = 0; i < 32; i++)
@@ -148,9 +167,12 @@ int main()
 //			    memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
 			    double R = r * 0.002;
 			    double PHI = phi[i];
-			    double Rref = Rdata[getIndex(THETA,i)][2];
-			    if (R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD) // 4. determine if diff(data,Rdata) passes threshold, add to list
+			    int index = getIndex(THETA,i);
+			    double Rref = Rdata[index][2];
+			    // 4. determine if diff(data,Rdata) passes threshold, add to list
+			    if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
 			    {
+				if (Rdata[index][3] == 0) Rdata[index][3] = 1; // if a newly activated point, start FORGET
 				// 5. this is where we parse the point list into pixel blocks
 				double th = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
 				double ph = -((PHI+10)/21) + 1;
@@ -167,17 +189,53 @@ int main()
 				    {
 					hh = H+a; ww = W+b;
 					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww); // src1[hh,ww] = src2[hh,ww]
+					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww);
 					hh = H-a; ww = W-b;
 					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
-					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww); // src1[hh,ww] = src2[hh,ww]
+					else src1.at<cv::Vec3b>(hh,ww) = src2.at<cv::Vec3b>(hh,ww);
 				    }
 				}
 			    }
 			}
 		    }
-		    cv::imshow("image",src1);
-		    cv::waitKey(1);
+		    if (previousRotationValue < THETA_MAX && THETA > THETA_MAX)
+		    {
+		        cv::imshow("image",src1);
+		        cv::waitKey(1);
+		        for (int i = 0; i < BASEROWS; i++)
+		        {
+			    if (Rdata[i][3] != 0) Rdata[i][3]++;
+			    if (Rdata[i][3] == FORGET)
+			    {
+				Rdata[i][3] = -FORGET;
+				double th = (2*Rdata[i][0]-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
+				double ph = -((Rdata[i][1]+10)/21) + 1;
+				W = int(th*w1/2);
+				H = int(ph*h1/2);
+				if (W > w1 || H > h1 || W < 0 || H < 0)
+				{
+				    std::cerr << "error: converted point out of bounds" << std::endl;
+				    continue;
+				}
+				for (int a = 0; a < HTHICK; a++)
+				{
+				    for (int b = 0; b < WTHICK; b++)
+				    {
+					hh = H+a; ww = W+b;
+					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
+					else src1.at<cv::Vec3b>(hh,ww) = src3.at<cv::Vec3b>(hh,ww);
+					hh = H-a; ww = W-b;
+					if (ww >= w1 || ww < 0 || hh >= h1 || hh < 0) continue;
+					else src1.at<cv::Vec3b>(hh,ww) = src3.at<cv::Vec3b>(hh,ww);
+				    }
+				}
+				std::cout<<"FORGET at "<<Rdata[i][0]<<" "<<Rdata[i][1]<<std::endl;
+			    }
+		        }
+		    }
+		    previousRotationValue = THETA;
+//		    clock_gettime(CLOCK_REALTIME,&stop);
+//		    std::cout<<stop.tv_sec-start.tv_sec<<" "<<stop.tv_nsec-start.tv_nsec<<std::endl;
                     continue;
                 }
 		else std::cerr << "Got a partial packet" << std::endl;

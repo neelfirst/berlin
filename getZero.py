@@ -9,6 +9,9 @@ PHI = [-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
        -14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67]
 UDP_IP = ""
 UDP_PORT = 2368
+NUMPACKETS = 1000
+THETA_MIN = -19
+THETA_MAX = 19
 
 
 def parseData (data):
@@ -37,7 +40,7 @@ sock = socket.socket(socket.AF_INET, # Internet
 sock.bind((UDP_IP, UDP_PORT))
 fulldata = []
 
-for i in xrange(0,1000):#while True:
+for i in xrange(0,NUMPACKETS):#while True:
 #	start = datetime.datetime.now()
 	data, addr = sock.recvfrom(1206*1808) # 2180448
 	if addr[1] != 2368 or addr[0] != '192.168.1.201':
@@ -46,14 +49,16 @@ for i in xrange(0,1000):#while True:
 	xylist = parseData(data)
 	fulldata.extend(xylist)
 
-for theta in xrange(-19,20):
+#print "capture complete, processing"
+
+for theta in xrange(THETA_MIN,THETA_MAX+1):
 	for phi in PHI:
 		R = []
 		for row in fulldata:
-			if row[0] == theta and row[1] == phi:
+			if row[0] == theta and row[1] == phi and row[2] != 0:
 				R.append(row[2])
-		if isnan(mean(R)):
+		if not R or isnan(min(R)):
 			print theta,',',phi,',0'
 		else:
-			print theta,',',phi,',',mean(R)
+			print theta,',',phi,',',min(R)
 #				print theta,',',phi,',',row[2]
