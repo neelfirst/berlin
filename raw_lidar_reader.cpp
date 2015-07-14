@@ -32,11 +32,12 @@ const std::string DIRECTORY = "./images/";
 const std::string FILENAME = "berkeley.csv"; // sync with getZero.py
 const int THETA_MIN = -19; // sync with getZero.py
 const int THETA_MAX = 19; // sync with getZero.py
+const int WTHICK = 5; // tune per display
+const int HTHICK = 15; // tune per display
 
-const int WTHICK = 10; // tune per display
-const int HTHICK = 14; // tune per display
-const int FORGET = 20; // tune for performance and aesthetics
-const double RTHRESHOLD = 0; // tune for performance and aesthetics
+const int MAPTIME = 1; // time, in seconds, to linger on a map/sat pair
+const int FORGET = 50; // tune for performance and aesthetics
+const double RTHRESHOLD = 0.5; // tune for performance and aesthetics
 //const double ITHRESHOLD = 0.2; // unused
 
 int getIndex (double th, int phindex) { return (int(th) + (0 - THETA_MIN))*32 + phindex; }
@@ -159,127 +160,129 @@ int main()
     // Enter a loop which does a blocking read() for the next datagram
     // gets the system time as soon as that read returns
     // and then does all of the analysis.
-    for ( int Z = 1; Z <= files.size()/2; Z++) 
+    for ( int Z = 0; Z < files.size(); Z+=2)
     {
-    std::stringstream ss; ss << Z;
-    std::string inMap = DIRECTORY + ss.str() + "-map.png";
-    std::string inSat = DIRECTORY + ss.str() + "-sat.png";
-    cv::Mat output = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
-    cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
-    cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
-    srcDims.w = output.cols; srcDims.h = output.rows;
-    if (srcDims.w != inputSat.cols || srcDims.h != inputSat.rows)
-    {
-	std::cerr << "fatal: source image dimensional mismatch" << std::endl;
-	_exit(4);
-    }
-    for ( int z = 0; z < 100; z++ ) // need to make this a finite loop so we can eventually move to the next set of images
-    {
-        // Block until a datagram or an error is returned.
-        bytesReceived = recvfrom(_socket,lidarBuffer,1206,0,&source_address,&source_address_length);
-        // If there was an error, return to the read the next datagram immediately, without updating any time records.
-        if (bytesReceived == -1)
-	{
-            std::cerr << "recvfrom() failed with errno: " << errno << ", " << strerror(errno) << std::endl;
-            continue;
-        };
+        std::string inMap = DIRECTORY + files[Z]; // #-map.png
+        std::string inSat = DIRECTORY + files[Z+1]; // #-sat.png
+        cv::Mat output = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
+        cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
+        cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
+        srcDims.w = output.cols; srcDims.h = output.rows;
+        if (srcDims.w != inputSat.cols || srcDims.h != inputSat.rows)
+        {
+	    std::cerr << "fatal: source image dimensional mismatch" << std::endl;
+	    _exit(4);
+        }
+        std::cout<<inMap<<" "<<inSat<<std::endl;
+        if (Z + 2 > files.size()) Z = 0;
+        timespec start, stop;
+        clock_gettime(CLOCK_REALTIME,&start);
+        do
+        {
+            // Block until a datagram or an error is returned.
+            bytesReceived = recvfrom(_socket,lidarBuffer,1206,0,&source_address,&source_address_length);
+            // If there was an error, return to the read the next datagram immediately, without updating any time records.
+            if (bytesReceived == -1)
+    	    {
+                std::cerr << "recvfrom() failed with errno: " << errno << ", " << strerror(errno) << std::endl;
+                continue;
+            };
 
-        if (source_address.sa_family == AF_INET)
-	{
-            sockaddr_in * socket_address = reinterpret_cast<sockaddr_in *>(&source_address);
-            if (socket_address->sin_addr.s_addr == ipAddress.s_addr)
-	    {
-		timespec start, stop;
-		clock_gettime(CLOCK_REALTIME,&start);
-                if (bytesReceived > 1) // 3. grab real time data from Lidar in loop (theta, R)
-		{
-                    // As well as can be determined, a complete datagram was received.
-		    for (int j = 0; j < 12; j++)
+            if (source_address.sa_family == AF_INET)
+    	    {
+                sockaddr_in * socket_address = reinterpret_cast<sockaddr_in *>(&source_address);
+                if (socket_address->sin_addr.s_addr == ipAddress.s_addr)
+    	        {
+                    if (bytesReceived > 1) // 3. grab real time data from Lidar in loop (theta, R)
 		    {
-			memcpy(&blk_id, &(lidarBuffer[j*100]), 2);
-			memcpy(&theta, &(lidarBuffer[(j*100)+2]), 2);
-			THETA = theta*0.01;
-			if (THETA > 180) THETA -= 360;
-			if (THETA < THETA_MIN || THETA > THETA_MAX) continue;
-			for (int i = 0; i < 32; i++)
-			{
-			    memcpy(&r, &(lidarBuffer[(j*100+4)+(i*3)]), 2);
-//			    memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
-			    double R = r * 0.002;
-			    double PHI = phi[i];
-			    double Rref = Rdata[getIndex(THETA,i)][2];
-			    // 4. determine if diff(data,Rdata) passes threshold, add to list
-			    if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
+                        // As well as can be determined, a complete datagram was received.
+	    	        for (int j = 0; j < 12; j++)
+		        {
+			    memcpy(&blk_id, &(lidarBuffer[j*100]), 2);
+    			    memcpy(&theta, &(lidarBuffer[(j*100)+2]), 2);
+			    THETA = theta*0.01;
+			    if (THETA > 180) THETA -= 360;
+			    if (THETA < THETA_MIN || THETA > THETA_MAX) continue;
+			    for (int i = 0; i < 32; i++)
 			    {
-				// 5. this is where we parse the point list into pixel blocks
-				double th = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
-				double ph = -((PHI+10)/21) + 1;
-				activePt.w = int(th*srcDims.w/2);
-				activePt.h = int(ph*srcDims.h/2);
-				if (activePt.w > srcDims.w || activePt.h > srcDims.h || activePt.w < 0 || activePt.h < 0)
-				{
-				    std::cerr << "error: converted point out of bounds" << std::endl;
-				    continue;
-				}
-				bool activate = true;
-				for (int a = 0; a < activePoints.size(); a++)
-				    if (activePoints[a].w == activePt.w && activePoints[a].h == activePt.h) { activate = false; break; }
-				if (activate)
-				{
-				    // if a newly active point, start FORGET
-				    activePt.forget = 1;
-				    activePoints.push_back(activePt);
+			        memcpy(&r, &(lidarBuffer[(j*100+4)+(i*3)]), 2);
+//			        memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
+			        double R = r * 0.002;
+			        double PHI = phi[i];
+			        double Rref = Rdata[getIndex(THETA,i)][2];
+			        // 4. determine if diff(data,Rdata) passes threshold, add to list
+			        if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
+			        {
+				    // 5. this is where we parse the point list into pixel blocks
+				    double th = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
+				    double ph = -((PHI+10)/21) + 1;
+				    activePt.w = int(th*srcDims.w/2);
+				    activePt.h = int(ph*srcDims.h/2);
+				    if (activePt.w > srcDims.w || activePt.h > srcDims.h || activePt.w < 0 || activePt.h < 0)
+				    {
+				        std::cerr << "error: converted point out of bounds" << std::endl;
+				        continue;
+				    }
+				    bool activate = true;
+				    for (int a = 0; a < activePoints.size(); a++)
+				        if (activePoints[a].w == activePt.w && activePoints[a].h == activePt.h) { activate = false; break; }
+				    if (activate)
+				    {
+				        // if a newly active point, start FORGET
+				        activePt.forget = 1;
+				        activePoints.push_back(activePt);
+				        for (int a = -HTHICK+1; a < HTHICK; a++)
+				        {
+					    for (int b = -WTHICK+1; b < WTHICK; b++)
+					    {
+					        H = activePt.h+a; W = activePt.w+b;
+					        if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
+					        else output.at<cv::Vec3b>(H,W) = inputSat.at<cv::Vec3b>(H,W);
+					    }
+				        }
+				    } // if activate
+			        } // if R != 0
+			    } // i loop
+		        } // j loop
+		        if (previousRotationValue < THETA_MAX && THETA > THETA_MAX)
+		        {
+		            cv::imshow("image",output);
+		            cv::waitKey(1);
+		            for (int i = 0; i < activePoints.size(); i++)
+		            {
+			        if (activePoints[i].forget != 0) activePoints[i].forget++; // increment + & - forget counters
+			        if (activePoints[i].forget == 0) activePoints.erase(activePoints.begin()+i); // remove once cooldown complete
+			        if (activePoints[i].forget == FORGET) // flip from + to - forget and deactivate pixels
+			        {
+			    	    activePoints[i].forget = -FORGET;
+				    if (activePoints[i].w > srcDims.w || activePoints[i].h > srcDims.h || 
+				        activePoints[i].w < 0 || activePoints[i].h < 0)
+				    {
+				        std::cerr << "error: converted point out of bounds" << std::endl;
+				        continue;
+				    }
 				    for (int a = -HTHICK+1; a < HTHICK; a++)
 				    {
-					for (int b = -WTHICK+1; b < WTHICK; b++)
-					{
-					    H = activePt.h+a; W = activePt.w+b;
+				        for (int b = -WTHICK+1; b < WTHICK; b++)
+				        {
+					    H = activePoints[i].h+a; W = activePoints[i].w+b;
 					    if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					    else output.at<cv::Vec3b>(H,W) = inputSat.at<cv::Vec3b>(H,W);
-					}
+					    else output.at<cv::Vec3b>(H,W) = inputMap.at<cv::Vec3b>(H,W);
+				        }
 				    }
-				}
-			    }
-			}
-		    }
-		    if (previousRotationValue < THETA_MAX && THETA > THETA_MAX)
-		    {
-		        cv::imshow("image",output);
-		        cv::waitKey(1);
-		        for (int i = 0; i < activePoints.size(); i++)
-		        {
-			    if (activePoints[i].forget != 0) activePoints[i].forget++; // increment + & - forget counters
-			    if (activePoints[i].forget == 0) activePoints.erase(activePoints.begin()+i); // remove once cooldown complete
-			    if (activePoints[i].forget == FORGET) // flip from + to - forget and deactivate pixels
-			    {
-				activePoints[i].forget = -FORGET;
-				if (activePoints[i].w > srcDims.w || activePoints[i].h > srcDims.h || 
-				    activePoints[i].w < 0 || activePoints[i].h < 0)
-				{
-				    std::cerr << "error: converted point out of bounds" << std::endl;
-				    continue;
-				}
-				for (int a = -HTHICK+1; a < HTHICK; a++)
-				{
-				    for (int b = -WTHICK+1; b < WTHICK; b++)
-				    {
-					H = activePoints[i].h+a; W = activePoints[i].w+b;
-					if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					else output.at<cv::Vec3b>(H,W) = inputMap.at<cv::Vec3b>(H,W);
-				    }
-				}
-			    }
-		        }
-		    }
-		    previousRotationValue = THETA;
-		    clock_gettime(CLOCK_REALTIME,&stop);
-		    std::cout<<stop.tv_sec-start.tv_sec<<" "<<stop.tv_nsec-start.tv_nsec<<std::endl;
-                    continue;
-                }
-		else std::cerr << "Got a partial packet" << std::endl;
-            }
-	else std::cerr << "Got a packet from the wrong source" << std::endl;
-        };
-    };
-    };
-};
+			        }
+		            } // i loop
+		        } // if previous
+		        previousRotationValue = THETA;
+		        clock_gettime(CLOCK_REALTIME,&stop);
+                        continue;
+                    } // bytesReceived > 1
+		    else std::cerr << "Got a partial packet" << std::endl;
+                } // ip_address
+	    else std::cerr << "Got a packet from the wrong source" << std::endl;
+            }; // AF_INET
+	    std::cout<<stop.tv_sec-start.tv_sec<<std::endl;
+        } while (stop.tv_sec - start.tv_sec < MAPTIME);
+    } // for
+    return 0;
+} // main
