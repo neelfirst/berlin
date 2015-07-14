@@ -32,21 +32,19 @@ const std::string DIRECTORY = "./images/";
 const std::string FILENAME = "berkeley.csv"; // sync with getZero.py
 const int THETA_MIN = -19; // sync with getZero.py
 const int THETA_MAX = 19; // sync with getZero.py
-const int WTHICK = 5; // tune per display
-const int HTHICK = 15; // tune per display
+const int WTHICK = 3; // tune per display = equals horzpixels / 12*thetarange
+const int HTHICK = 15; // tune per display = equals vertpixels / 64
 
-const int MAPTIME = 1; // time, in seconds, to linger on a map/sat pair
+const int MAPTIME = 600; // time, in seconds, to linger on a map/sat pair
 const int FORGET = 50; // tune for performance and aesthetics
 const double RTHRESHOLD = 0.5; // tune for performance and aesthetics
 //const double ITHRESHOLD = 0.2; // unused
 
 int getIndex (double th, int phindex) { return (int(th) + (0 - THETA_MIN))*32 + phindex; }
 bool hasEnding (std::string const &fullString, std::string const &ending) {
-    if (fullString.length() >= ending.length()) {
+    if (fullString.length() >= ending.length())
         return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
-    } else {
-        return false;
-    }
+    else return false;
 }
 int getdir (std::string dir, std::vector<std::string> &files)
 {
@@ -57,7 +55,6 @@ int getdir (std::string dir, std::vector<std::string> &files)
         std::cerr << "Error(" << errno << ") opening " << dir << std::endl;
         return errno;
     }
-
     while ((dirp = readdir(dp)) != NULL) {
 	temp = std::string(dirp->d_name);
 	if (hasEnding(temp,".png"))
@@ -156,6 +153,7 @@ int main()
     // need to insert into loop to loop through sets of images
     std::vector<std::string> files = std::vector<std::string>();
     getdir(DIRECTORY,files);
+    timespec start, stop;
 
     // Enter a loop which does a blocking read() for the next datagram
     // gets the system time as soon as that read returns
@@ -173,9 +171,7 @@ int main()
 	    std::cerr << "fatal: source image dimensional mismatch" << std::endl;
 	    _exit(4);
         }
-        std::cout<<inMap<<" "<<inSat<<std::endl;
-        if (Z + 2 > files.size()) Z = 0;
-        timespec start, stop;
+        if (Z + 2 >= files.size()) Z = -2;
         clock_gettime(CLOCK_REALTIME,&start);
         do
         {
@@ -279,9 +275,8 @@ int main()
                     } // bytesReceived > 1
 		    else std::cerr << "Got a partial packet" << std::endl;
                 } // ip_address
-	    else std::cerr << "Got a packet from the wrong source" << std::endl;
-            }; // AF_INET
-	    std::cout<<stop.tv_sec-start.tv_sec<<std::endl;
+	        else std::cerr << "Got a packet from the wrong source" << std::endl;
+            } // AF_INET
         } while (stop.tv_sec - start.tv_sec < MAPTIME);
     } // for
     return 0;
