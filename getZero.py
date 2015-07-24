@@ -10,8 +10,8 @@ PHI = [-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
 UDP_IP = ""
 UDP_PORT = 2368
 NUMPACKETS = 1000
-THETA_MIN = -19
-THETA_MAX = 19
+THETA_MIN = -170
+THETA_MAX = -100
 
 
 def parseData (data):

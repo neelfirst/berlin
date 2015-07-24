@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include <cassert>
-#include <jpeglib.h>
+//#include <jpeglib.h>
 #include <math.h>
 #include <time.h>
 #include <sys/time.h>
@@ -29,9 +29,9 @@ const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
 			-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 
 const std::string DIRECTORY = "./images/";
-const std::string FILENAME = "berkeley.csv"; // sync with getZero.py
-const int THETA_MIN = -19; // sync with getZero.py
-const int THETA_MAX = 19; // sync with getZero.py
+const std::string FILENAME = "berlin.csv"; // sync with getZero.py
+const int THETA_MIN = -170; // sync with getZero.py
+const int THETA_MAX = -100; // sync with getZero.py
 const int WTHICK = 3; // tune per display = equals horzpixels / 12*thetarange
 const int HTHICK = 15; // tune per display = equals vertpixels / 64
 
