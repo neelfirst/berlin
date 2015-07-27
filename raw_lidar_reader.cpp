@@ -32,11 +32,12 @@ const std::string DIRECTORY = "./images/";
 const std::string FILENAME = "berlin.csv"; // sync with getZero.py
 const int THETA_MIN = -170; // sync with getZero.py
 const int THETA_MAX = -100; // sync with getZero.py
-const int WTHICK = 3; // tune per display = equals horzpixels / 12*thetarange
-const int HTHICK = 15; // tune per display = equals vertpixels / 64
+const int WTHICK = 10; // tune per display = equals horzpixels / 12*thetarange
+const int HTHICK = 30; // tune per display = equals vertpixels / 64
 
 const int MAPTIME = 600; // time, in seconds, to linger on a map/sat pair
-const int FORGET = 50; // tune for performance and aesthetics
+const int POSFORGET = 10; // tune for performance and aesthetics
+const int NEGFORGET = 2;
 const double RTHRESHOLD = 0.5; // tune for performance and aesthetics
 //const double ITHRESHOLD = 0.2; // unused
 
@@ -113,7 +114,7 @@ int main()
     int bytesReceived;
 /////////////////////////////////////////////////////////
 
-
+    cv::namedWindow("An interactive LiDAR-based HERE Maps exhibit",cv::WINDOW_AUTOSIZE);
     // 1. import baseline information from csv
     // columns: 0 = theta, 1 = phi, 2 = radius
     const int BASEROWS = (1+THETA_MAX-THETA_MIN)*32; // expected rows in base data file
@@ -148,12 +149,12 @@ int main()
     double previousRotationValue = 0, THETA = 0;
     uint16_t blk_id, theta, r; // uint8_t intensity;
     pt activePt, srcDims;
-    int W, H;
+    int W, H, counter = 0;
 
     // need to insert into loop to loop through sets of images
     std::vector<std::string> files = std::vector<std::string>();
     getdir(DIRECTORY,files);
-    timespec start, stop;
+    timespec start, stop, begin, end;
 
     // Enter a loop which does a blocking read() for the next datagram
     // gets the system time as soon as that read returns
@@ -183,7 +184,6 @@ int main()
                 std::cerr << "recvfrom() failed with errno: " << errno << ", " << strerror(errno) << std::endl;
                 continue;
             };
-
             if (source_address.sa_family == AF_INET)
     	    {
                 sockaddr_in * socket_address = reinterpret_cast<sockaddr_in *>(&source_address);
@@ -210,7 +210,7 @@ int main()
 			        if ((R != 0 && Rref != 0 && (Rref-R)/Rref >= RTHRESHOLD))
 			        {
 				    // 5. this is where we parse the point list into pixel blocks
-				    double th = (2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
+				    double th = -(2*THETA-THETA_MAX-THETA_MIN)/(THETA_MAX-THETA_MIN) + 1;
 				    double ph = -((PHI+10)/21) + 1;
 				    activePt.w = int(th*srcDims.w/2);
 				    activePt.h = int(ph*srcDims.h/2);
@@ -240,17 +240,21 @@ int main()
 			        } // if R != 0
 			    } // i loop
 		        } // j loop
-		        if (previousRotationValue < THETA_MAX && THETA > THETA_MAX)
-		        {
-		            cv::imshow("image",output);
-		            cv::waitKey(1);
+		        if (previousRotationValue < THETA_MAX && THETA > THETA_MAX && ++counter == 1)
+			{
+			    counter = 0;
+			    clock_gettime(CLOCK_REALTIME,&begin);
+		            cv::imshow("An interactive LiDAR-based HERE Maps exhibit",output);
+		            cv::waitKey(4);
+			    clock_gettime(CLOCK_REALTIME,&end);
+			    std::cout<<end.tv_sec-begin.tv_sec<<" "<<end.tv_nsec-begin.tv_nsec<<std::endl;
 		            for (int i = 0; i < activePoints.size(); i++)
 		            {
 			        if (activePoints[i].forget != 0) activePoints[i].forget++; // increment + & - forget counters
 			        if (activePoints[i].forget == 0) activePoints.erase(activePoints.begin()+i); // remove once cooldown complete
-			        if (activePoints[i].forget == FORGET) // flip from + to - forget and deactivate pixels
+			        if (activePoints[i].forget == POSFORGET) // flip from + to - forget and deactivate pixels
 			        {
-			    	    activePoints[i].forget = -FORGET;
+			    	    activePoints[i].forget = -NEGFORGET;
 				    if (activePoints[i].w > srcDims.w || activePoints[i].h > srcDims.h || 
 				        activePoints[i].w < 0 || activePoints[i].h < 0)
 				    {
