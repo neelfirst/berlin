@@ -243,11 +243,8 @@ int main()
 		        if (previousRotationValue < THETA_MAX && THETA > THETA_MAX && ++counter == 1)
 			{
 			    counter = 0;
-			    clock_gettime(CLOCK_REALTIME,&begin);
 			    cv::imshow("P. Christian; B. Hathaway; S. Gruhlke; V. Gupta; N. Shah. An interactive LiDAR-based HERE Maps exhibit",output);
 		            cv::waitKey(4);
-			    clock_gettime(CLOCK_REALTIME,&end);
-			    std::cout<<end.tv_sec-begin.tv_sec<<" "<<end.tv_nsec-begin.tv_nsec<<std::endl;
 		            for (int i = 0; i < activePoints.size(); i++)
 		            {
 			        if (activePoints[i].forget != 0) activePoints[i].forget++; // increment + & - forget counters
