@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 struct in_addr ipAddress;
 int _socket;
@@ -28,15 +29,15 @@ const double phi[32] = {-30.67,-9.33,-29.33,-8.00,-28.00,-6.66,-26.66,-5.33,
 			-20.00,1.33,-18.67,2.67,-17.33,4.00,-16.00,5.33,
 			-14.67,6.67,-13.33,8.00,-12.00,9.33,-10.67,10.67};
 
-const std::string DIRECTORY = "./images/";
+const std::string DIRECTORY = "./demo/";
 const std::string FILENAME = "berlin.csv"; // sync with getZero.py
 const int THETA_MIN = -170; // sync with getZero.py
 const int THETA_MAX = -100; // sync with getZero.py
-const int WTHICK = 10; // tune per display = equals horzpixels / 12*thetarange
-const int HTHICK = 40; // tune per display = equals vertpixels / 64
+//const int WTHICK = 10; // tune per display = equals horzpixels / 12*thetarange
+//const int HTHICK = 40; // tune per display = equals vertpixels / 64
 
 const int MAPTIME = 600; // time, in seconds, to linger on a map/sat pair
-const int POSFORGET = 25; // tune for performance and aesthetics
+const int POSFORGET = 5; // tune for performance and aesthetics
 const int NEGFORGET = 5;
 const double RTHRESHOLD = 0.3; // tune for performance and aesthetics
 //const double ITHRESHOLD = 0.2; // unused
@@ -147,7 +148,7 @@ int main()
 
     // 2. use opencv to import two source images, perform dimension checking
     double previousRotationValue = 0, THETA = 0;
-    uint16_t blk_id, theta, r; // uint8_t intensity;
+    uint16_t blk_id, theta, r; uint8_t intensity;
     pt activePt, srcDims;
     int W, H, counter = 0;
 
@@ -164,14 +165,14 @@ int main()
         std::string inMap = DIRECTORY + files[Z]; // #-map.png
         std::string inSat = DIRECTORY + files[Z+1]; // #-sat.png
         cv::Mat output = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
-        cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
-        cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
+//        cv::Mat inputSat = cv::imread(inSat, CV_LOAD_IMAGE_COLOR);
+//        cv::Mat inputMap = cv::imread(inMap, CV_LOAD_IMAGE_COLOR);
         srcDims.w = output.cols; srcDims.h = output.rows;
-        if (srcDims.w != inputSat.cols || srcDims.h != inputSat.rows)
-        {
-	    std::cerr << "fatal: source image dimensional mismatch" << std::endl;
-	    _exit(4);
-        }
+//        if (srcDims.w != inputSat.cols || srcDims.h != inputSat.rows)
+//        {
+//	    std::cerr << "fatal: source image dimensional mismatch" << std::endl;
+//	    _exit(4);
+//        }
         if (Z + 2 >= files.size()) Z = -2;
         clock_gettime(CLOCK_REALTIME,&start);
         do
@@ -202,7 +203,7 @@ int main()
 			    for (int i = 0; i < 32; i++)
 			    {
 			        memcpy(&r, &(lidarBuffer[(j*100+4)+(i*3)]), 2);
-//			        memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
+			        memcpy(&intensity, &(lidarBuffer[(j*100+4)+(i*3+2)]), 1);
 			        double R = r * 0.002;
 			        double PHI = phi[i];
 			        double Rref = Rdata[getIndex(THETA,i)][2];
@@ -227,15 +228,17 @@ int main()
 				        // if a newly active point, start FORGET
 				        activePt.forget = 1;
 				        activePoints.push_back(activePt);
-				        for (int a = -HTHICK+1; a < HTHICK; a++)
-				        {
-					    for (int b = -WTHICK+1; b < WTHICK; b++)
-					    {
-					        H = activePt.h+a; W = activePt.w+b;
-					        if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					        else output.at<cv::Vec3b>(H,W) = inputSat.at<cv::Vec3b>(H,W);
-					    }
-				        }
+					circle(output,cv::Point(activePt.w,activePt.h),5,
+							cv::Scalar(intensity,intensity,intensity),-1,8,0);
+//				        for (int a = -HTHICK+1; a < HTHICK; a++)
+//				        {
+//					    for (int b = -WTHICK+1; b < WTHICK; b++)
+//					    {
+//					        H = activePt.h+a; W = activePt.w+b;
+//					        if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
+//					        else output.at<cv::Vec3b>(H,W) = inputSat.at<cv::Vec3b>(H,W);
+//					    }
+//				        }
 				    } // if activate
 			        } // if R != 0
 			    } // i loop
@@ -261,15 +264,17 @@ int main()
 				        std::cerr << "error: converted point out of bounds" << std::endl;
 				        continue;
 				    }
-				    for (int a = -HTHICK+1; a < HTHICK; a++)
-				    {
-				        for (int b = -WTHICK+1; b < WTHICK; b++)
-				        {
-					    H = activePoints[i].h+a; W = activePoints[i].w+b;
-					    if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
-					    else output.at<cv::Vec3b>(H,W) = inputMap.at<cv::Vec3b>(H,W);
-				        }
-				    }
+				    cv::circle(output,cv::Point(activePoints[i].w,activePoints[i].h),5,
+						cv::Scalar(145,65,18),-1,8,0);
+//				    for (int a = -HTHICK+1; a < HTHICK; a++)
+//				    {
+//				        for (int b = -WTHICK+1; b < WTHICK; b++)
+//				        {
+//					    H = activePoints[i].h+a; W = activePoints[i].w+b;
+//					    if (W >= srcDims.w || W < 0 || H >= srcDims.h || H < 0) continue;
+//					    else output.at<cv::Vec3b>(H,W) = inputMap.at<cv::Vec3b>(H,W);
+//				        }
+//				    }
 			        }
 		            } // i loop
 		        } // if previous
