@@ -33,12 +33,12 @@ const std::string FILENAME = "berlin.csv"; // sync with getZero.py
 const int THETA_MIN = -170; // sync with getZero.py
 const int THETA_MAX = -100; // sync with getZero.py
 const int WTHICK = 10; // tune per display = equals horzpixels / 12*thetarange
-const int HTHICK = 30; // tune per display = equals vertpixels / 64
+const int HTHICK = 40; // tune per display = equals vertpixels / 64
 
 const int MAPTIME = 600; // time, in seconds, to linger on a map/sat pair
-const int POSFORGET = 10; // tune for performance and aesthetics
-const int NEGFORGET = 2;
-const double RTHRESHOLD = 0.5; // tune for performance and aesthetics
+const int POSFORGET = 25; // tune for performance and aesthetics
+const int NEGFORGET = 5;
+const double RTHRESHOLD = 0.3; // tune for performance and aesthetics
 //const double ITHRESHOLD = 0.2; // unused
 
 int getIndex (double th, int phindex) { return (int(th) + (0 - THETA_MIN))*32 + phindex; }
@@ -114,7 +114,7 @@ int main()
     int bytesReceived;
 /////////////////////////////////////////////////////////
 
-    cv::namedWindow("An interactive LiDAR-based HERE Maps exhibit",cv::WINDOW_AUTOSIZE);
+    cv::namedWindow("P. Christian; B. Hathaway; S. Gruhlke; V. Gupta; N. Shah. An interactive LiDAR-based HERE Maps exhibit",cv::WINDOW_AUTOSIZE);
     // 1. import baseline information from csv
     // columns: 0 = theta, 1 = phi, 2 = radius
     const int BASEROWS = (1+THETA_MAX-THETA_MIN)*32; // expected rows in base data file
@@ -244,7 +244,7 @@ int main()
 			{
 			    counter = 0;
 			    clock_gettime(CLOCK_REALTIME,&begin);
-		            cv::imshow("An interactive LiDAR-based HERE Maps exhibit",output);
+			    cv::imshow("P. Christian; B. Hathaway; S. Gruhlke; V. Gupta; N. Shah. An interactive LiDAR-based HERE Maps exhibit",output);
 		            cv::waitKey(4);
 			    clock_gettime(CLOCK_REALTIME,&end);
 			    std::cout<<end.tv_sec-begin.tv_sec<<" "<<end.tv_nsec-begin.tv_nsec<<std::endl;
