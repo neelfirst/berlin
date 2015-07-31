@@ -68,7 +68,7 @@ int getdir (std::string dir, std::vector<std::string> &files)
 
 int main()
 {
-//////// IGNORE ALL OF THIS BECAUSE IT WORKS PRETTY DAMN WELL THANKS BRYCE
+//////// Bryce's original LiDAR capture code. Thanks Bryce!
     assert(UINT32_MAX >= 4294967295);
     inet_aton("192.168.1.201", &ipAddress);
     // Can't seem to use SOCK_NONBLOCK here because that makes recvfrom() return every time with EAGAIN error.
@@ -114,7 +114,7 @@ int main()
     int bytesReceived;
 /////////////////////////////////////////////////////////
 
-    cv::namedWindow("P. Christian; B. Hathaway; S. Gruhlke; V. Gupta; N. Shah. An interactive LiDAR-based HERE Maps exhibit",cv::WINDOW_AUTOSIZE);
+    cv::namedWindow("An interactive LiDAR-based HERE Maps exhibit",cv::WINDOW_AUTOSIZE);
     // 1. import baseline information from csv
     // columns: 0 = theta, 1 = phi, 2 = radius
     const int BASEROWS = (1+THETA_MAX-THETA_MIN)*32; // expected rows in base data file
@@ -172,7 +172,7 @@ int main()
 	    std::cerr << "fatal: source image dimensional mismatch" << std::endl;
 	    _exit(4);
         }
-        if (Z + 2 >= files.size()) Z = -2;
+        if (Z + 2 >= files.size()) Z = -2; // infinite loop through image sets
         clock_gettime(CLOCK_REALTIME,&start);
         do
         {
@@ -225,6 +225,7 @@ int main()
 				    if (activate)
 				    {
 				        // if a newly active point, start FORGET
+				        // performance analysis: same as cv::Rect(H,W,2*HTHICK,2*WTHICK)
 				        activePt.forget = 1;
 				        activePoints.push_back(activePt);
 				        for (int a = -HTHICK+1; a < HTHICK; a++)
@@ -243,6 +244,7 @@ int main()
 		        if (previousRotationValue < THETA_MAX && THETA > THETA_MAX && ++counter == 1)
 			{
 			    counter = 0;
+			    // imshow timing: ~100ms @ 7680 x 3240; ~50ms @ 5120 x 2160
 			    cv::imshow("P. Christian; B. Hathaway; S. Gruhlke; V. Gupta; N. Shah. An interactive LiDAR-based HERE Maps exhibit",output);
 		            cv::waitKey(4);
 		            for (int i = 0; i < activePoints.size(); i++)
